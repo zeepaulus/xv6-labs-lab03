@@ -1,0 +1,355 @@
+diff --git a/.gitignore b/.gitignore
+index d036a8b..11d0677 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -11,7 +11,7 @@ entryother
+ initcode
+ initcode.out
+ kernelmemfs
+-mkfs
++mkfs/mkfs
+ kernel/kernel
+ user/usys.S
+ .gdbinit
+diff --git a/23122021_23122031_23122043.patch b/23122021_23122031_23122043.patch
+new file mode 100644
+index 0000000..e69de29
+diff --git a/Makefile b/Makefile
+index 8e74f52..e64fffa 100644
+--- a/Makefile
++++ b/Makefile
+@@ -188,7 +188,7 @@ UPROGS=\
+ 	$U/_grind\
+ 	$U/_wc\
+ 	$U/_zombie\
+-
++	$U/_symlinktest\
+ 
+ 
+ 
+diff --git a/kernel/fcntl.h b/kernel/fcntl.h
+index 44861b9..b42df18 100644
+--- a/kernel/fcntl.h
++++ b/kernel/fcntl.h
+@@ -3,3 +3,4 @@
+ #define O_RDWR    0x002
+ #define O_CREATE  0x200
+ #define O_TRUNC   0x400
++#define O_NOFOLLOW 0x800
+\ No newline at end of file
+diff --git a/kernel/file.c b/kernel/file.c
+index 25fa226..5f68cb0 100644
+--- a/kernel/file.c
++++ b/kernel/file.c
+@@ -179,4 +179,3 @@ filewrite(struct file *f, uint64 addr, int n)
+ 
+   return ret;
+ }
+-
+diff --git a/kernel/fs.c b/kernel/fs.c
+index c6bab15..cceceff 100644
+--- a/kernel/fs.c
++++ b/kernel/fs.c
+@@ -416,6 +416,32 @@ bmap(struct inode *ip, uint bn)
+     brelse(bp);
+     return addr;
+   }
++  bn -= NINDIRECT;
++
++  if(bn < NDOUBLEINDIRECT){
++    if((addr = ip->addrs[NDIRECT+1]) == 0)
++      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
++
++    int i1 = bn / NINDIRECT;
++    int i2 = bn % NINDIRECT;
++
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    if((addr = a[i1]) == 0){
++      a[i1] = addr = balloc(ip->dev);
++      log_write(bp);
++    }
++    brelse(bp);
++
++    bp = bread(ip->dev, addr);
++    a = (uint*)bp->data;
++    if((addr = a[i2]) == 0){
++      a[i2] = addr = balloc(ip->dev);
++      log_write(bp);
++    }
++    brelse(bp);
++    return addr;
++  }
+ 
+   panic("bmap: out of range");
+ }
+@@ -425,7 +451,7 @@ bmap(struct inode *ip, uint bn)
+ void
+ itrunc(struct inode *ip)
+ {
+-  int i, j;
++  int i, j, k;
+   struct buf *bp;
+   uint *a;
+ 
+@@ -448,6 +474,29 @@ itrunc(struct inode *ip)
+     ip->addrs[NDIRECT] = 0;
+   }
+ 
++  if(ip->addrs[NDIRECT+1]){
++    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
++    a = (uint*)bp->data;
++    for(j = 0; j < NINDIRECT; j++){
++      if(a[j]){
++        struct buf *bp2 = bread(ip->dev, a[j]);
++        uint *a2 = (uint*)bp2->data;
++        for(k = 0; k < NINDIRECT; k++){
++          if(a2[k]){
++            bfree(ip->dev, a2[k]);
++            a2[k] = 0;
++          }
++        }
++        brelse(bp2);
++        bfree(ip->dev, a[j]);
++        a[j] = 0;
++      }
++    }
++    brelse(bp);
++    bfree(ip->dev, ip->addrs[NDIRECT+1]);
++    ip->addrs[NDIRECT+1] = 0;
++  }
++
+   ip->size = 0;
+   iupdate(ip);
+ }
+@@ -694,4 +743,4 @@ struct inode*
+ nameiparent(char *path, char *name)
+ {
+   return namex(path, 1, name);
+-}
++}
+\ No newline at end of file
+diff --git a/kernel/fs.h b/kernel/fs.h
+index 139dcc9..1a7c357 100644
+--- a/kernel/fs.h
++++ b/kernel/fs.h
+@@ -24,9 +24,10 @@ struct superblock {
+ 
+ #define FSMAGIC 0x10203040
+ 
+-#define NDIRECT 12
++#define NDIRECT 11
+ #define NINDIRECT (BSIZE / sizeof(uint))
+-#define MAXFILE (NDIRECT + NINDIRECT)
++#define NDOUBLEINDIRECT (BSIZE / sizeof(uint)) * (BSIZE / sizeof(uint))
++#define MAXFILE (NDIRECT + NINDIRECT + NDOUBLEINDIRECT)
+ 
+ // On-disk inode structure
+ struct dinode {
+@@ -35,7 +36,7 @@ struct dinode {
+   short minor;          // Minor device number (T_DEVICE only)
+   short nlink;          // Number of links to inode in file system
+   uint size;            // Size of file (bytes)
+-  uint addrs[NDIRECT+1];   // Data block addresses
++  uint addrs[NDIRECT+2];   // Data block addresses
+ };
+ 
+ // Inodes per block.
+@@ -57,4 +58,3 @@ struct dirent {
+   ushort inum;
+   char name[DIRSIZ];
+ };
+-
+diff --git a/kernel/stat.h b/kernel/stat.h
+index 19543af..cbcacbe 100644
+--- a/kernel/stat.h
++++ b/kernel/stat.h
+@@ -1,6 +1,7 @@
+ #define T_DIR     1   // Directory
+ #define T_FILE    2   // File
+ #define T_DEVICE  3   // Device
++#define T_SYMLINK 4
+ 
+ struct stat {
+   int dev;     // File system's disk device
+diff --git a/kernel/syscall.c b/kernel/syscall.c
+index ed65409..52233e8 100644
+--- a/kernel/syscall.c
++++ b/kernel/syscall.c
+@@ -101,6 +101,7 @@ extern uint64 sys_unlink(void);
+ extern uint64 sys_link(void);
+ extern uint64 sys_mkdir(void);
+ extern uint64 sys_close(void);
++extern uint64 sys_symlink(void);
+ 
+ // An array mapping syscall numbers from syscall.h
+ // to the function that handles the system call.
+@@ -126,6 +127,7 @@ static uint64 (*syscalls[])(void) = {
+ [SYS_link]    sys_link,
+ [SYS_mkdir]   sys_mkdir,
+ [SYS_close]   sys_close,
++[SYS_symlink] sys_symlink,
+ };
+ 
+ void
+diff --git a/kernel/syscall.h b/kernel/syscall.h
+index bc5f356..13818da 100644
+--- a/kernel/syscall.h
++++ b/kernel/syscall.h
+@@ -20,3 +20,4 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_symlink 22
+diff --git a/kernel/sysfile.c b/kernel/sysfile.c
+index 16b668c..ae9a640 100644
+--- a/kernel/sysfile.c
++++ b/kernel/sysfile.c
+@@ -308,11 +308,10 @@ sys_open(void)
+   int fd, omode;
+   struct file *f;
+   struct inode *ip;
+-  int n;
+ 
+-  argint(1, &omode);
+-  if((n = argstr(0, path, MAXPATH)) < 0)
++  if(argstr(0, path, MAXPATH) < 0)
+     return -1;
++  argint(1, &omode);
+ 
+   begin_op();
+ 
+@@ -328,17 +327,42 @@ sys_open(void)
+       return -1;
+     }
+     ilock(ip);
++
++    if(ip->type == T_SYMLINK && !(omode & O_NOFOLLOW)) {
++      int depth = 0;
++      while(ip->type == T_SYMLINK) {
++        if(depth >= 10) {
++          iunlockput(ip);
++          end_op();
++          return -1;
++        }
++        if(readi(ip, 0, (uint64)path, 0, MAXPATH) < 0) {
++          iunlockput(ip);
++          end_op();
++          return -1;
++        }
++        iunlockput(ip);
++        
++        if((ip = namei(path)) == 0) {
++          end_op();
++          return -1;
++        }
++        ilock(ip);
++        depth++;
++      }
++    }
++
+     if(ip->type == T_DIR && omode != O_RDONLY){
+       iunlockput(ip);
+       end_op();
+       return -1;
+     }
+-  }
+ 
+-  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
+-    iunlockput(ip);
+-    end_op();
+-    return -1;
++    if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
++      iunlockput(ip);
++      end_op();
++      return -1;
++    }
+   }
+ 
+   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+@@ -348,6 +372,11 @@ sys_open(void)
+     end_op();
+     return -1;
+   }
++  iupdate(ip);
++
++  if(omode & O_TRUNC){
++    itrunc(ip);
++  }
+ 
+   if(ip->type == T_DEVICE){
+     f->type = FD_DEVICE;
+@@ -356,14 +385,12 @@ sys_open(void)
+     f->type = FD_INODE;
+     f->off = 0;
+   }
++  // -------------------------------------
++
+   f->ip = ip;
+   f->readable = !(omode & O_WRONLY);
+   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
+ 
+-  if((omode & O_TRUNC) && ip->type == T_FILE){
+-    itrunc(ip);
+-  }
+-
+   iunlock(ip);
+   end_op();
+ 
+@@ -503,3 +530,34 @@ sys_pipe(void)
+   }
+   return 0;
+ }
++
++uint64
++sys_symlink(void)
++{
++  char target[MAXPATH], path[MAXPATH];
++  struct inode *ip;
++  int len;
++
++  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
++    return -1;
++
++  begin_op();
++
++  ip = create(path, T_SYMLINK, 0, 0);
++  if(ip == 0){
++    end_op();
++    return -1;
++  }
++
++  len = strlen(target);
++  if(writei(ip, 0, (uint64)target, 0, len) != len){
++    iunlockput(ip);
++    end_op();
++    return -1;
++  }
++
++  iunlockput(ip);
++  end_op();
++
++  return 0;
++}
+\ No newline at end of file
+diff --git a/user/user.h b/user/user.h
+index 4d398d5..92d0032 100644
+--- a/user/user.h
++++ b/user/user.h
+@@ -22,6 +22,7 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int symlink(char*, char*);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/user/usys.pl b/user/usys.pl
+index 01e426e..bc5c22e 100755
+--- a/user/usys.pl
++++ b/user/usys.pl
+@@ -36,3 +36,4 @@ entry("getpid");
+ entry("sbrk");
+ entry("sleep");
+ entry("uptime");
++entry("symlink");

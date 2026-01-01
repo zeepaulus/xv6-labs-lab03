@@ -1,0 +1,112 @@
+[33m55e95b1[m import
+[33m70a895f[m xx
+[33m0a70d04[m more or less take traps/interrupts
+[33m84eb544[m foo
+[33mcb83c71[m fix some trap bugs
+[33ma4c03de[m primitive fork and exit system calls
+[33mbe0a7ea[m sleep, wakeup, wait, exit
+[33mae6e8aa[m checkpoint
+[33m7baa34a[m start on MP; detect MP configuration
+[33m21a88fd[m checkpoint. booting second processor.  stack is messed up, but thanks to cliff and plan 9 code, at least boots and gets into C code.
+[33m8352b99[m oops
+[33mbf49aed[m send console output to parallel port
+[33mdf5cc91[m compile "user programs" curproc array
+[33m7df1310[m bug in trapret
+[33m89eb5fb[m boot more than two CPUs, each on own initial stack
+[33mbf39036[m system call arguments
+[33ma44ee3c[m stick mpstack in cpu structure
+[33mb61c254[m system call return values initialize 2nd cpu's idt
+[33mc41f1de[m file descriptors pipes
+[33mbd303ed[m timer interrupts
+[33mf7cea12[m disable interrupts when holding kernel lock
+[33m8b4e2a0[m swtch saves callee-saved registers swtch idles on per-CPU stack, not on calling process's stack fix pipe bugs usertest.c tests pipes, fork, exit, close
+[33mb22d898[m timer interrupts disk interrupts (assuming bochs has a bug)
+[33m7837c71[m disable all interrupts when acquiring lock user program that makes a blocking system call
+[33m72ea69f[m read the disk using interrupts
+[33m084f214[m oops
+[33m7ea6c9d[m queue with disk requests
+[33m5ce9751[m Changes to allow use of native x86 ELF compilers, which on my Linux 2.4 box using gcc 3.4.6 don't seem to follow the same conventions as the i386-jos-elf-gcc compilers. Can run make 'TOOLPREFIX=' or edit the Makefile.
+[33mb548df1[m pre-empt both user and kernel, in clock interrupt usertest.c tests pre-emption kill()
+[33mb41b38d[m give each cpu its own clock, so that preemption works on cpu 1
+[33m4e8f237[m no more big kernel lock succeeds at usertests.c pipe test
+[33m6643247[m cvs add spinlock.h fix race in schedule()
+[33m8148b6e[m i think my cmpxchg use was wrong in acquire nesting cli/sti: release shouldn't always enable interrupts separate setup of lapic from starting of other cpus, so cpu() works earlier flag to disable locking in console output make locks work even when curproc==0 (still crashes in clock interrupt)
+[33m6eb6f10[m passes both usertests exit had acquire where I meant release swtch now checks that you hold no locks
+[33mf27a68a[m extract lapic code from mp.c
+[33md9872ff[m and the file
+[33m46bbd72[m no more recursive locks wakeup1() assumes you hold proc_table_lock sleep(chan, lock) provides atomic sleep-and-release to wait for condition ugly code in swtch/scheduler to implement new sleep fix lots of bugs in pipes, wait, and exit fix bugs if timer interrupt goes off in schedule() console locks per line, not per byte
+[33m7f419a0[m Change fetchint, fetcharg, and putint to return -1 on error, 0 on success. They had been returning 0 on error, 1 on success, but all the callers were checking for return value < 0.
+[33m67a9314[m Add void for ANSI C
+[33m3497670[m silence load_icode signedness warning
+[33m643b122[m move everything having to do with proc_table_lock into proc.c
+[33m40a2a08[m Undo change from this morning that wasn't intended to get in.
+[33m65bd8e1[m New scheduler.
+[33m856e1fc[m Attempt to clean up newproc somewhat.
+[33m51716a8[m Rename fd_reference to more suggestive fd_incref. (Fd_reference sounds like it might just return the ref count.)
+[33m6f2b626[m remove non-idiomatic increment/decrement
+[33m4ed974f[m more name cleanup
+[33m72fef4f[m Don't kill process when inside kernel.
+[33mb903b69[m tidy up
+[33m9b37d1b[m Add user.h for prototypes. Add cons_puts for cleaner output.
+[33mf3d2902[m add cons_puts for atomic (readable) output
+[33m679a977[m remove acquire1 and release1
+[33m4763a04[m add minimal comments to generator vector table
+[33mb53f99d[m standardize on #include "foo" not <foo>
+[33m6b765c4[m rename swtch.S to setjmp.S
+[33mef2bd07[m standardize on not using foo_ prefix in struct foo
+[33mb74f4b5[m Keep interrupts disabled during startup.
+[33mb75c11b[m add %s to cprintf for cons_puts
+[33m8a7eb80[m fix main return type
+[33m9692d5a[m was empty; gone
+[33m96e16b9[m no memlayout.h
+[33m84d7957[m more idiomatic c
+[33m6e6a1dd[m various little fixes that should have been in earlier checkins
+[33m564f787[m Eliminate annoying Pseudodesc structure. Eliminate unnecessary parts of mmu.h.
+[33mc54c792[m nitpicks
+[33mf15a3ae[m cleaner
+[33mee9c7f3[m goodbye PushRegs
+[33m857d60c[m cleaner
+[33mb5ee516[m add uint and standardize on typedefs instead of unsigned
+[33me0966f4[m no more cons_putc; real_cons_putc -> cons_putc
+[33mb5f1700[m standarize on unix-like lowercase struct names
+[33m0dd4253[m add ide_lock for sleep
+[33mbd228a8[m prevent longjmp / forkret from writing over tf->edi
+[33m2927081[m uint32_t -> uint &c
+[33m11a9947[m bread iget mkfs makes a file system image put this in your .bochsrc: ata0-slave: type=disk, mode=flat, path="fs.img", cylinders=1024, heads=1, spt=1
+[33m9d3fb67[m namei
+[33m54a4b00[m update
+[33mc59361f[m primitive exec
+[33m8455980[m exec arguments
+[33me46fb46[m acquire+release ide_lock in ide_intr
+[33m3263062[m open()
+[33mc8b29f6[m better interrupt plan---this one appears to work ioapic
+[33m3661892[m nit
+[33m8ec6530[m generalize async read to support write too
+[33m1042077[m bwrite
+[33me8d11c2[m mknod,ialloc,iupdate
+[33m0e84a0e[m fix race in holding() check in acquire() give cpu1 a TSS and gdt for when it enters scheduler() and a pseudo proc[] entry for each cpu cpu0 waits for each other cpu to start up read() for files
+[33m2411139[m block bitmap balloc
+[33m6c0e444[m oops, update directory inode too
+[33m6fa5ffb[m devsw checkpoint: write(fd,"hello\n",6) where fd is a console dev almost works
+[33m2601de0[m fix test program: don't close before writing set fd to writeable on open for write
+[33m939f9ed[m iread for T_DEV O_RDWR, etc. create file
+[33m28d9ef0[m printf convert userfs to use printf bfree ifree writei start on unlink
+[33m8a8be1b[m low-level keyboard input (not hooked up to /dev yet) fix acquire() to cli() *before* incrementing nlock make T_SYSCALL a trap gate, not an interrupt gate sadly, various crashes if you hold down a keyboard key...
+[33m5be0039[m interrupts could be recursive since lapic_eoi() called before rti so fast interrupts overflow the kernel stack fix: cli() before lapic_eoi()
+[33m17a8565[m init creates console, opens 0/1/2, runs sh sh accepts 0-argument commands (like userfs) reads from console
+[33m24437cd[m fix deadlock---iput(dp) asap working unlink, but doesn't free dir blocks that become empty remove out-of-date comment in ioapic
+[33m0633b97[m unlink,mknod,create with multi-component pathnames should work now remove console init code from userfs
+[33m1f54484[m fstat primitive ls
+[33m4357207[m fix getblk to actually lock the block no more cons_put system calls usertests tests two processes writing files
+[33m7ce01cf[m mknod set nlink = 1 usertests for concurrent create/delete, and read() after unlink()
+[33m14938f9[m buffer cache, fifo replacement
+[33m22bac2c[m free inode only when noone is holding a pointer to it.  should fix open-unlink- read problem, but untested
+[33mcd93074[m LRU disk cache replacement
+[33m05e9755[m zero out all of dirent.name when creating don't increase length of directory
+[33m9e5970d[m link()
+[33mc372e8d[m zero freed blocks multi-block directories track size of directory (size = number entries in use) should namei (and other code that scans through directories) scan through all blocks of a directory and not use size?
+[33m211ff0c[m namei returns locked parent dir inode for create / unlink don't hold fd table lock across idecref() (latter does block i/o) idecref calls iput() in case last ref -> freeing inode dir size is 512 * # blocks, so readi/writei &c work unlink deletes dirent even if ip->nlink > 0
+[33m8abe2bc[m don't print unallocated dir entries
+[33m17e3cf1[m fix iget() bug that allocated in-use inode[] entries
+[33me4bcd2a[m wdir now uses readi/writei
+[33md15f0d1[m start o
